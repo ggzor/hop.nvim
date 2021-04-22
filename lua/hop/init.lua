@@ -47,7 +47,7 @@ local function unhl_and_unmark(buf_handle, hl_ns)
   vim.api.nvim_buf_del_var(buf_handle, 'hop#marked')
 end
 
-local function hint_with(hint_mode, opts)
+local function hint_with(hint_mode, opts, grey_selectors)
   -- first, we ensure we’re not already hopping around; if not, we mark the current buffer (this mark will be removed
   -- when a jump is performed or if the user stops hopping)
   -- abort if we’re already hopping
@@ -82,6 +82,8 @@ local function hint_with(hint_mode, opts)
   -- create the highlight group and grey everything out; the highlight group will allow us to clean everything at once
   -- when hop quits
   local hl_ns = vim.api.nvim_create_namespace('')
+  local top_line = (grey_selectors and grey_selectors.top and grey_selectors.top()) or top_line
+  local bot_line = (grey_selectors and grey_selectors.bot and grey_selectors.bot()) or bot_line
   grey_things_out(0, hl_ns, top_line, bot_line)
 
   -- get the buffer lines and create hints; hint_counts allows us to display some error diagnostics to the user, if any,
@@ -141,7 +143,7 @@ local function hint_with(hint_mode, opts)
       local key_str = vim.fn.nr2char(key)
       if opts.keys:find(key_str, 1, true) then
         -- If this is a key used in hop (via opts.keys), deal with it in hop
-        h = M.refine_hints(0, vim.fn.nr2char(key))
+        h = M.refine_hints(0, vim.fn.nr2char(key), grey_selectors)
         vim.cmd('redraw')
       else
         -- If it's not, quit hop and use the key like normal instead
@@ -200,6 +202,38 @@ function M.hint_words(opts)
   hint_with(hint.by_word_start, get_command_opts(opts))
 end
 
+function M.hint_words_same_line(opts)
+  hint_with(hint.by_word_start_same_line, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') - 1 end,
+        bot = function () return vim.fn.line('.') - 1 end
+      })
+end
+
+function M.hint_backwords_same_line(opts)
+  hint_with(hint.by_backword_start_same_line, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') - 1 end,
+        bot = function () return vim.fn.line('.') - 1 end
+      })
+end
+
+function M.hint_word_ends_same_line(opts)
+  hint_with(hint.by_word_end_same_line, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') - 1 end,
+        bot = function () return vim.fn.line('.') - 1 end
+      })
+end
+
+function M.hint_backword_ends_same_line(opts)
+  hint_with(hint.by_backword_end_same_line, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') - 1 end,
+        bot = function () return vim.fn.line('.') - 1 end
+      })
+end
+
 function M.hint_patterns(opts)
   opts = get_command_opts(opts)
 
@@ -236,6 +270,34 @@ end
 
 function M.hint_lines(opts)
   hint_with(hint.by_line_start, get_command_opts(opts))
+end
+
+function M.hint_lines_to_top_same(opts)
+  hint_with(hint.by_line_to_top, get_command_opts(opts),
+      {
+        bot = function () return vim.fn.line('.') - 2 end
+      })
+end
+
+function M.hint_lines_to_bottom_same(opts)
+  hint_with(hint.by_line_to_bottom, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') end
+      })
+end
+
+function M.hint_lines_to_top(opts)
+  hint_with(hint.by_line_start_to_top, get_command_opts(opts),
+      {
+        bot = function () return vim.fn.line('.') - 2 end
+      })
+end
+
+function M.hint_lines_to_bottom(opts)
+  hint_with(hint.by_line_start_to_bottom, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') end
+      })
 end
 
 -- Insert the highlights and register the autocommand.

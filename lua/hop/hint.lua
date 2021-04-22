@@ -15,14 +15,30 @@ end
 -- Regex hint mode.
 --
 -- Used to hint result of a search.
-function M.by_searching(pat, plain_search)
+function M.by_searching(pat, plain_search, same_line, ignore_when_compare)
   if plain_search then
     pat = vim.fn.escape(pat, '\\/.$^~[]')
   end
   return {
     oneshot = false,
-    match = function(s)
-      return vim.regex(pat):match_str(s)
+    match = function(s, line_nr, col)
+      if same_line and line_nr ~= vim.fn.line('.') - 1 then
+        return nil
+      end
+
+      b, e = vim.regex(pat):match_str(s)
+
+      if b == nil then
+        return nil
+      end
+
+      if ignore_when_compare then
+        if ignore_when_compare(b + col - 1, vim.fn.col('.') - 1) then
+          return b, e, false, true
+        end
+      end
+
+      return b, e
     end
   }
 end
@@ -55,6 +71,18 @@ end
 -- M.by_word_start = M.by_searching('\\<\\w\\+')
 M.by_word_start = M.by_searching('\\w\\+')
 
+M.by_word_start_same_line = M.by_searching('\\w\\+', nil, true,
+  function (matchcol, col) return matchcol <= col end)
+
+M.by_backword_start_same_line = M.by_searching('\\w\\+', nil, true,
+  function (matchcol, col) return matchcol >= col end)
+
+M.by_word_end_same_line = M.by_searching('\\w\\W', nil, true,
+  function (matchcol, col) return matchcol <= col end)
+
+M.by_backword_end_same_line = M.by_searching('\\w\\W', nil, true,
+  function (matchcol, col) return matchcol >= col end)
+
 -- Line hint mode.
 --
 -- Used to tag the beginning of each lines with ihnts.
@@ -62,6 +90,90 @@ M.by_line_start = {
   oneshot = true,
   match = function(_)
     return 0, 1, false
+  end
+}
+
+M.by_line_to_top = {
+  oneshot = true,
+  match = function(s, line_nr)
+    if line_nr < vim.fn.line('.') - 1 then
+      local col = vim.fn.col('.') - 1
+      local maxcol = #vim.fn.getline(line_nr + 1)
+      local target = col > maxcol and maxcol or col
+
+      if col > 0 and target == 0 then
+        return 0, 0
+      end
+
+      return target, target + 1, false
+    else
+      return 0, 0, false
+    end
+  end
+}
+
+M.by_line_to_bottom = {
+  oneshot = true,
+  match = function(s, line_nr)
+    if line_nr > vim.fn.line('.') - 1 then
+      local col = vim.fn.col('.') - 1
+      local maxcol = #vim.fn.getline(line_nr + 1)
+      local target = col > maxcol and maxcol or col
+
+      if col > 0 and target == 0 then
+        return 0, 0
+      end
+
+      return target, target + 1, false
+    else
+      return 0, 0, false
+    end
+  end
+}
+
+M.by_line_start_to_top = {
+  oneshot = true,
+  match = function(s, line_nr)
+    if line_nr < vim.fn.line('.') - 1 then
+      local col = vim.fn.col('.') - 1
+      local maxcol = #vim.fn.getline(line_nr + 1)
+
+      if maxcol == 0 then
+        return 0, 1, false
+      end
+
+      b, e = vim.regex('\\S'):match_str(s)
+      if b == nil then
+        return 0, 1, false
+      end
+
+      return b, e
+    else
+      return 0, 0, false
+    end
+  end
+}
+
+M.by_line_start_to_bottom = {
+  oneshot = true,
+  match = function(s, line_nr)
+    if line_nr > vim.fn.line('.') - 1 then
+      local col = vim.fn.col('.') - 1
+      local maxcol = #vim.fn.getline(line_nr + 1)
+
+      if maxcol == 0 then
+        return 0, 1, false
+      end
+
+      b, e = vim.regex('\\S'):match_str(s)
+      if b == nil then
+        return 0, 1, false
+      end
+
+      return b, e
+    else
+      return 0, 0, false
+    end
   end
 }
 
@@ -110,17 +222,19 @@ function M.mark_hints_line(hint_mode, line_nr, line, col_offset, win_width)
   local col = 1
   while true do
     local s = shifted_line:sub(col)
-    local b, e = hint_mode.match(s)
+    local b, e, _, ignore = hint_mode.match(s, line_nr, col)
 
     if b == nil or (b == 0 and e == 0) then
       break
     end
 
-    local colb = col + b
-    hints[#hints + 1] = {
-      line = line_nr;
-      col = colb + col_offset;
-    }
+    if not ignore then
+      local colb = col + b
+      hints[#hints + 1] = {
+        line = line_nr;
+        col = colb + col_offset;
+      }
+    end
 
     if hint_mode.oneshot then
       break
@@ -186,14 +300,18 @@ function M.create_hints(hint_mode, win_width, cursor_pos, col_offset, top_line, 
   local indirect_hints = {}
   local hint_counts = 0
   for i = 1, #lines do
-    local line_hints = M.mark_hints_line(hint_mode, top_line + i - 1, lines[i], col_offset, win_width)
-    hints[i] = line_hints
+    if vim.fn.foldclosed(top_line + i - 1) == -1 then
+      local line_hints = M.mark_hints_line(hint_mode, top_line + i - 1, lines[i], col_offset, win_width)
+      hints[i] = line_hints
 
-    hint_counts = hint_counts + #line_hints.hints
+      hint_counts = hint_counts + #line_hints.hints
 
-    for j = 1, #line_hints.hints do
-      local hint = line_hints.hints[j]
-      indirect_hints[#indirect_hints + 1] = { i = i; j = j; dist = manh_dist(cursor_pos, { hint.line, hint.col }) }
+      for j = 1, #line_hints.hints do
+        local hint = line_hints.hints[j]
+        indirect_hints[#indirect_hints + 1] = { i = i; j = j; dist = manh_dist(cursor_pos, { hint.line, hint.col }) }
+      end
+    else
+      hints[i] = { hints = {}, length = 0 }
     end
   end
 
