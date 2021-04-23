@@ -177,6 +177,28 @@ M.by_line_start_to_bottom = {
   end
 }
 
+M.by_line_sol_to_top = {
+  oneshot = true,
+  match = function(s, line_nr)
+    if line_nr < vim.fn.line('.') - 1 then
+      return 0, 1, false
+    else
+      return 0, 0, false
+    end
+  end
+}
+
+M.by_line_sol_to_bottom = {
+  oneshot = true,
+  match = function(s, line_nr)
+    if line_nr > vim.fn.line('.') - 1 then
+      return 0, 1, false
+    else
+      return 0, 0, false
+    end
+  end
+}
+
 -- Turn a table representing a hint into a string.
 local function tbl_to_str(hint)
   local s = ''

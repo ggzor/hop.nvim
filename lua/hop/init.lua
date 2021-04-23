@@ -308,6 +308,20 @@ function M.hint_lines_to_bottom(opts)
       })
 end
 
+function M.hint_lines_sol_to_top(opts)
+  hint_with(hint.by_line_sol_to_top, get_command_opts(opts),
+      {
+        bot = function () return vim.fn.line('.') - 2 end
+      })
+end
+
+function M.hint_lines_sol_to_bottom(opts)
+  hint_with(hint.by_line_sol_to_bottom, get_command_opts(opts),
+      {
+        top = function () return vim.fn.line('.') end
+      })
+end
+
 -- Insert the highlights and register the autocommand.
 local highlight = require'hop.highlight'
 highlight.insert_highlights()
