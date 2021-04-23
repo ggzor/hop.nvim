@@ -58,6 +58,10 @@ local function hint_with(hint_mode, opts, grey_selectors)
 
   vim.api.nvim_buf_set_var(0, 'hop#marked', true)
 
+  if opts.extend_visual then
+    vim.cmd('normal! gv')
+  end
+
   -- get a bunch of information about the window and the cursor
   local win_info = vim.fn.getwininfo(vim.api.nvim_get_current_win())[1]
   local win_view = vim.fn.winsaveview()
@@ -143,7 +147,7 @@ local function hint_with(hint_mode, opts, grey_selectors)
       local key_str = vim.fn.nr2char(key)
       if opts.keys:find(key_str, 1, true) then
         -- If this is a key used in hop (via opts.keys), deal with it in hop
-        h = M.refine_hints(0, vim.fn.nr2char(key), grey_selectors)
+        h = M.refine_hints(0, vim.fn.nr2char(key), opts)
         vim.cmd('redraw')
       else
         -- If it's not, quit hop and use the key like normal instead
@@ -161,7 +165,7 @@ end
 --
 -- Refining hints allows to advance the state machine by one step. If a terminal step is reached, this function jumps to
 -- the location. Otherwise, it stores the new state machine.
-function M.refine_hints(buf_handle, key)
+function M.refine_hints(buf_handle, key, opts)
   local hint_state = vim.api.nvim_buf_get_var(buf_handle, 'hop#hint_state')
   local h, hints, update_count = hint.reduce_hints_lines(hint_state.hints, key)
 
@@ -183,6 +187,10 @@ function M.refine_hints(buf_handle, key)
 
     -- prior to jump, register the current position into the jump list
     vim.cmd("normal! m'")
+
+    if opts.extend_visual then
+      vim.cmd('normal! gv')
+    end
 
     -- JUMP!
     vim.api.nvim_win_set_cursor(0, { h.line + 1, h.col - 1})
